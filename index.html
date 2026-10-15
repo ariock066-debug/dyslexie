@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lecteur Syllabique Dyslexie - Export PDF</title>
+    <!-- Tailwind CSS pour l'interface -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Bibliothèques PDF éprouvées -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    
+    <!-- Police Lexend -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --dys-font: 'Lexend', 'Comic Sans MS', Trebuchet MS, Arial, sans-serif;
+            --bg-color: #F8FAFC;
+            --read-bg: #FFFFFF;
+            --color-s1: #DC2626;
+            --color-s2: #2563EB;
+            --font-size: 1.65rem;
+            --word-spacing: 0.4em;
+            --letter-spacing: 0.06em;
+            --line-height: 2.2;
+        }
+
+        body {
+            font-family: var(--dys-font);
+            background-color: var(--bg-color);
+            color: #1E293B;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+        }
+
+        .read-container {
+            background-color: var(--read-bg);
+            transition: background-color 0.2s ease;
+        }
+
+        #outputText {
+            font-size: var(--font-size);
+            line-height: var(--line-height);
+            letter-spacing: var(--letter-spacing);
+            word-spacing: var(--word-spacing);
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .syllable-0 {
+            color: var(--color-s1) !important;
+            font-weight: 600;
+        }
+        .syllable-1 {
+            color: var(--color-s2) !important;
+            font-weight: 600;
+        }
+
+        .palette-btn {
+            transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .palette-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+        .palette-btn.active {
+            outline: 3px solid #3B82F6;
+            outline-offset: 2px;
+        }
+
+        #notification {
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+
+        /* Container invisible hors-écran utilisé spécifiquement pour la génération du PDF */
+        #pdfCaptureStaging {
+            position: absolute;
+            left: -9999px;
+            top: 0;
+            width: 794px; /* Largeur standard A4 à 96 DPI */
+            padding: 40px;
+            box-sizing: border-box;
+            background-color: white;
+            display: block;
+            z-index: -100;
+        }
+    </style>
+</head>
+<body class="min-h-screen p-3 sm:p-6 md:p-8 flex flex-col items-center">
+
+    <div class="max-w-6xl w-full space-y-6">
+        
+        <!-- En-tête -->
+        <header class="text-center space-y-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-semibold tracking-wide">
+                <span>📖</span> Outil Pédagogique Syllabique pour Dyslexie
+            </div>
+            <h1 class="text-3xl md:text-4xl font-bold text-slate-800">Lecteur Syllabique & Fiches PDF</h1>
+            <p class="text-slate-600 text-sm md:text-base max-w-2xl mx-auto">
+                Découpe automatique des mots en syllabes bicolores alternées, avec options de confort visuel et export PDF garanti.
+            </p>
+        </header>
+
+        <main class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            
+            <!-- Colonne Paramètres & Saisie -->
+            <section class="lg:col-span-5 flex flex-col space-y-5">
+                
+                <!-- Zone de saisie du texte -->
+                <div class="bg-white p-5 rounded-3xl shadow-sm border border-slate-200 space-y-3">
+                    <label for="inputText" class="font-semibold text-slate-800 text-sm flex justify-between items-center">
+                        <span>Texte de lecture :</span>
+                        <span id="charCount" class="text-xs text-slate-400 font-normal">0 mot(s)</span>
+                    </label>
+                    <textarea id="inputText" rows="6" 
+                        class="w-full p-4 border border-slate-300 rounded-2xl focus:ring-4 focus:ring-blue-100 focus:border-blue-500 outline-none resize-y text-base text-slate-700 transition"
+                        placeholder="Tapez ou collez le texte ici..."></textarea>
+                    
+                    <div class="flex gap-2">
+                        <button onclick="processText()" 
+                            class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-xl shadow-sm hover:shadow transition active:scale-[0.98] flex items-center justify-center gap-2">
+                            <span>✨</span> Colorer les syllabes
+                        </button>
+                        <button onclick="clearText()" 
+                            class="bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium py-3 px-4 rounded-xl transition">
+                            Effacer
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Palettes & Couleurs Syllabes -->
+                <div class="bg-white p-5 rounded-3xl shadow-sm border border-slate-200 space-y-4">
+                    <h3 class="font-semibold text-slate-800 text-sm flex items-center gap-2">
+                        <span>🎨</span> Choix des teintes des syllabes
+                    </h3>
+                    
+                    <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        <button onclick="setPalette('#DC2626', '#2563EB', '#FFFFFF', this)" class="palette-btn active flex items-center gap-2 p-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-medium text-slate-700">
+                            <span class="w-3.5 h-3.5 rounded-full bg-red-600"></span>
+                            <span class="w-3.5 h-3.5 rounded-full bg-blue-600"></span>
+                            <span>Classique</span>
+                        </button>
+                        <button onclick="setPalette('#7C3AED', '#059669', '#FFFFFF', this)" class="palette-btn flex items-center gap-2 p-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-medium text-slate-700">
+                            <span class="w-3.5 h-3.5 rounded-full bg-purple-600"></span>
+                            <span class="w-3.5 h-3.5 rounded-full bg-emerald-600"></span>
+                            <span>Violet / Vert</span>
+                        </button>
+                        <button onclick="setPalette('#1E40AF', '#EA580C', '#FFFFFF', this)" class="palette-btn flex items-center gap-2 p-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-medium text-slate-700">
+                            <span class="w-3.5 h-3.5 rounded-full bg-blue-800"></span>
+                            <span class="w-3.5 h-3.5 rounded-full bg-orange-600"></span>
+                            <span>Marine / Orange</span>
+                        </button>
+                        <button onclick="setPalette('#0F172A', '#64748B', '#FFFFFF', this)" class="palette-btn flex items-center gap-2 p-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-medium text-slate-700">
+                            <span class="w-3.5 h-3.5 rounded-full bg-slate-900"></span>
+                            <span class="w-3.5 h-3.5 rounded-full bg-slate-500"></span>
+                            <span>Noir / Gris</span>
+                        </button>
+                        <button onclick="setPalette('#0D9488', '#D97706', '#FFFDF5', this)" class="palette-btn flex items-center gap-2 p-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-medium text-slate-700">
+                            <span class="w-3.5 h-3.5 rounded-full bg-teal-600"></span>
+                            <span class="w-3.5 h-3.5 rounded-full bg-amber-600"></span>
+                            <span>Teal / Ambre</span>
+                        </button>
+                        <button onclick="setPalette('#BE185D', '#4338CA', '#FFFFFF', this)" class="palette-btn flex items-center gap-2 p-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-medium text-slate-700">
+                            <span class="w-3.5 h-3.5 rounded-full bg-pink-700"></span>
+                            <span class="w-3.5 h-3.5 rounded-full bg-indigo-700"></span>
+                            <span>Rose / Indigo</span>
+                        </button>
+                    </div>
+
+                    <!-- Sélecteurs personnalisés -->
+                    <div class="pt-2 border-t border-slate-100 flex items-center justify-between gap-3">
+                        <label class="flex-1 flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200 cursor-pointer">
+                            <input type="color" id="pickerColor1" value="#DC2626" onchange="updateCustomColors()" class="w-7 h-7 rounded border-0 p-0 bg-transparent cursor-pointer">
+                            <span class="text-xs font-medium text-slate-700">Syllabe 1</span>
+                        </label>
+                        <label class="flex-1 flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200 cursor-pointer">
+                            <input type="color" id="pickerColor2" value="#2563EB" onchange="updateCustomColors()" class="w-7 h-7 rounded border-0 p-0 bg-transparent cursor-pointer">
+                            <span class="text-xs font-medium text-slate-700">Syllabe 2</span>
+                        </label>
+                    </div>
+
+                    <!-- Fond anti-fatigue -->
+                    <div class="pt-2 border-t border-slate-100">
+                        <span class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Fond de lecture (anti-éblouissement)</span>
+                        <div class="grid grid-cols-5 gap-1.5">
+                            <button onclick="setBackgroundColor('#FFFFFF', this)" class="bg-choice-btn border-2 border-blue-500 py-1.5 rounded-lg text-xs font-medium bg-white text-slate-800 text-center">Blanc</button>
+                            <button onclick="setBackgroundColor('#FFFDF5', this)" class="bg-choice-btn border border-slate-200 py-1.5 rounded-lg text-xs font-medium bg-[#FFFDF5] text-slate-800 text-center">Ivoire</button>
+                            <button onclick="setBackgroundColor('#FEF9C3', this)" class="bg-choice-btn border border-slate-200 py-1.5 rounded-lg text-xs font-medium bg-[#FEF9C3] text-slate-800 text-center">Jaune</button>
+                            <button onclick="setBackgroundColor('#F0FDF4', this)" class="bg-choice-btn border border-slate-200 py-1.5 rounded-lg text-xs font-medium bg-[#F0FDF4] text-slate-800 text-center">Menthe</button>
+                            <button onclick="setBackgroundColor('#EFF6FF', this)" class="bg-choice-btn border border-slate-200 py-1.5 rounded-lg text-xs font-medium bg-[#EFF6FF] text-slate-800 text-center">Ciel</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Réglages Typographiques & Polices -->
+                <div class="bg-white p-5 rounded-3xl shadow-sm border border-slate-200 space-y-4">
+                    <h3 class="font-semibold text-slate-800 text-sm">Typographie & Espacements</h3>
+                    
+                    <!-- Choix de Police -->
+                    <div>
+                        <label for="fontFamilySelect" class="text-xs text-slate-600 mb-1 block font-medium">Police d'écriture</label>
+                        <select id="fontFamilySelect" onchange="updateFontFamily()" class="w-full p-2 border border-slate-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-100">
+                            <option value="'Lexend', sans-serif">Lexend (Recommandée)</option>
+                            <option value="'Comic Sans MS', cursive, sans-serif">Comic Sans MS (Lettres bien distinguées)</option>
+                            <option value="'Trebuchet MS', sans-serif">Trebuchet MS</option>
+                            <option value="Arial, sans-serif">Arial</option>
+                            <option value="Verdana, sans-serif">Verdana (Large et aéré)</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <div class="flex justify-between text-xs text-slate-600 mb-1 font-medium">
+                            <span>Taille de police</span>
+                            <span id="fontSizeDisplay">1.65 rem</span>
+                        </div>
+                        <input type="range" id="fontSize" min="1.1" max="2.6" step="0.05" value="1.65" class="w-full accent-blue-600" oninput="updateStyles()">
+                    </div>
+
+                    <div>
+                        <div class="flex justify-between text-xs text-slate-600 mb-1 font-medium">
+                            <span>Espacement entre les mots</span>
+                            <span id="wordSpacingDisplay">0.40 em</span>
+                        </div>
+                        <input type="range" id="wordSpacing" min="0.1" max="0.8" step="0.05" value="0.40" class="w-full accent-blue-600" oninput="updateStyles()">
+                    </div>
+
+                    <div>
+                        <div class="flex justify-between text-xs text-slate-600 mb-1 font-medium">
+                            <span>Espacement entre les lettres</span>
+                            <span id="letterSpacingDisplay">0.06 em</span>
+                        </div>
+                        <input type="range" id="letterSpacing" min="0.0" max="0.2" step="0.01" value="0.06" class="w-full accent-blue-600" oninput="updateStyles()">
+                    </div>
+                </div>
+
+            </section>
+
+            <!-- Colonne Zone de Lecture & Téléchargement -->
+            <section class="lg:col-span-7 flex flex-col space-y-3">
+                <div class="flex flex-wrap justify-between items-center gap-2">
+                    <h2 class="text-base font-semibold text-slate-800 flex items-center gap-2">
+                        <span>📄</span> Zone de lecture adaptée
+                    </h2>
+                    
+                    <div class="flex items-center gap-2">
+                        <!-- Bouton PDF Fiabilisé -->
+                        <button id="downloadPdfBtn" onclick="downloadCleanPDF()" 
+                            class="bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-xs sm:text-sm py-2 px-3.5 rounded-xl shadow-sm hover:shadow transition-all flex items-center gap-2 active:scale-95 cursor-pointer">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                            </svg>
+                            <span id="btnPdfLabel">Télécharger le PDF</span>
+                        </button>
+
+                        <!-- Solution de secours directe via nouvel onglet -->
+                        <button onclick="openPrintableSheet()" 
+                            title="Ouvre une version prête à enregistrer en PDF via le navigateur"
+                            class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-xs sm:text-sm py-2 px-3 rounded-xl transition border border-slate-200 flex items-center gap-1.5">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
+                            </svg>
+                            <span>Aperçu plein écran</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Zone d'affichage du texte coloré -->
+                <div id="readCard" class="read-container rounded-3xl p-6 sm:p-8 md:p-10 min-h-[500px] border-2 border-slate-200 shadow-sm relative overflow-hidden">
+                    <div id="outputText">Le texte dé·cou·pé ap·pa·raî·tra i·ci...</div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <!-- Conteneur dédié invisible de pré-rendu pour le PDF -->
+    <div id="pdfCaptureStaging"></div>
+
+    <!-- Notification discrète -->
+    <div id="notification" class="fixed bottom-6 right-6 bg-slate-900 text-white text-sm py-2.5 px-4 rounded-xl shadow-lg opacity-0 pointer-events-none z-50 transform translate-y-2">
+        Message
+    </div>
+
+    <script>
+        // Algorithme de découpage syllabique pour le français
+        function splitIntoSyllables(word) {
+            if (word.length <= 3) return [word];
+
+            const v = 'aàâäeéèêëiîïoôöuùûüyÿœæAÀÂÄEÉÈÊËIÎÏOÔÖUÙÛÜYŸŒÆ';
+            // Heuristique consonne(s) + voyelle(s)
+            const regex = new RegExp(`[^${v}]*[${v}]+(?:[^${v}](?![${v}]))*`, 'gi');
+            const matches = word.match(regex);
+            
+            if (!matches || matches.length === 0) return [word];
+
+            // Si la dernière terminaison est une consonne isolée, on la rattache à la précédente
+            if (matches.length > 1 && !new RegExp(`[${v}]`, 'i').test(matches[matches.length - 1])) {
+                const last = matches.pop();
+                matches[matches.length - 1] += last;
+            }
+
+            return matches;
+        }
+
+        // Coloration et découpe
+        function processText() {
+            const input = document.getElementById('inputText').value;
+            const outputDiv = document.getElementById('outputText');
+            
+            const wordsList = input.trim().split(/\s+/).filter(w => w.length > 0);
+            document.getElementById('charCount').textContent = `${wordsList.length} mot(s)`;
+
+            if (!input.trim()) {
+                outputDiv.innerHTML = "<span class='text-slate-400 italic'>Veuillez saisir ou coller un texte dans la zone de gauche.</span>";
+                return;
+            }
+
+            const tokens = input.split(/([a-zA-ZÀ-ÿœæŒÆ]+)/g);
+            let finalHtml = '';
+
+            tokens.forEach(token => {
+                if (/^[a-zA-ZÀ-ÿœæŒÆ]+$/.test(token)) {
+                    const syllables = splitIntoSyllables(token);
+                    let wordHtml = '';
+                    
+                    syllables.forEach((syllable, index) => {
+                        const colorClass = `syllable-${index % 2}`;
+                        wordHtml += `<span class="${colorClass}">${syllable}</span>`;
+                    });
+                    
+                    finalHtml += `<span class="inline-block">${wordHtml}</span>`;
+                } else {
+                    let safeToken = token.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                    finalHtml += `<span class="text-slate-800">${safeToken}</span>`;
+                }
+            });
+
+            outputDiv.innerHTML = finalHtml;
+        }
+
+        function setPalette(c1, c2, bg, btnElement) {
+            document.documentElement.style.setProperty('--color-s1', c1);
+            document.documentElement.style.setProperty('--color-s2', c2);
+            document.documentElement.style.setProperty('--read-bg', bg);
+
+            document.getElementById('pickerColor1').value = c1;
+            document.getElementById('pickerColor2').value = c2;
+
+            document.querySelectorAll('.palette-btn').forEach(btn => btn.classList.remove('active'));
+            if (btnElement) btnElement.classList.add('active');
+        }
+
+        function updateCustomColors() {
+            const c1 = document.getElementById('pickerColor1').value;
+            const c2 = document.getElementById('pickerColor2').value;
+
+            document.documentElement.style.setProperty('--color-s1', c1);
+            document.documentElement.style.setProperty('--color-s2', c2);
+
+            document.querySelectorAll('.palette-btn').forEach(btn => btn.classList.remove('active'));
+        }
+
+        function setBackgroundColor(color, btnElement) {
+            document.documentElement.style.setProperty('--read-bg', color);
+            document.querySelectorAll('.bg-choice-btn').forEach(b => {
+                b.classList.remove('border-blue-500', 'border-2');
+                b.classList.add('border-slate-200', 'border');
+            });
+            if (btnElement) {
+                btnElement.classList.remove('border-slate-200', 'border');
+                btnElement.classList.add('border-blue-500', 'border-2');
+            }
+        }
+
+        function updateStyles() {
+            const fontSize = document.getElementById('fontSize').value;
+            const wordSpacing = document.getElementById('wordSpacing').value;
+            const letterSpacing = document.getElementById('letterSpacing').value;
+
+            document.documentElement.style.setProperty('--font-size', `${fontSize}rem`);
+            document.documentElement.style.setProperty('--word-spacing', `${wordSpacing}em`);
+            document.documentElement.style.setProperty('--letter-spacing', `${letterSpacing}em`);
+
+            document.getElementById('fontSizeDisplay').textContent = `${parseFloat(fontSize).toFixed(2)} rem`;
+            document.getElementById('wordSpacingDisplay').textContent = `${parseFloat(wordSpacing).toFixed(2)} em`;
+            document.getElementById('letterSpacingDisplay').textContent = `${parseFloat(letterSpacing).toFixed(2)} em`;
+        }
+
+        function updateFontFamily() {
+            const font = document.getElementById('fontFamilySelect').value;
+            document.documentElement.style.setProperty('--dys-font', font);
+        }
+
+        function clearText() {
+            document.getElementById('inputText').value = '';
+            document.getElementById('charCount').textContent = '0 mot(s)';
+            document.getElementById('outputText').innerHTML = "<span class='text-slate-400 italic'>Le texte dé·cou·pé ap·pa·raî·tra i·ci...</span>";
+        }
+
+        function notify(msg) {
+            const notif = document.getElementById('notification');
+            notif.textContent = msg;
+            notif.classList.remove('opacity-0', 'translate-y-2');
+            notif.classList.add('opacity-100', 'translate-y-0');
+            setTimeout(() => {
+                notif.classList.remove('opacity-100', 'translate-y-0');
+                notif.classList.add('opacity-0', 'translate-y-2');
+            }, 3000);
+        }
+
+        /**
+         * GÉNÉRATION PDF FIABLE SANS PAGE BLANCHE
+         * 1. Construit un clone DOM complètement aplati avec des couleurs et styles inline absolus.
+         * 2. Utilise html2canvas avec configuration de sécurité (cross-origin off, scale haute définition).
+         * 3. Compile le canvas dans jsPDF.
+         */
+        async function downloadCleanPDF() {
+            const outputElement = document.getElementById('outputText');
+            const content = outputElement.innerHTML;
+
+            if (!content || content.includes('Veuillez saisir') || content.includes('Le texte dé·cou·pé')) {
+                notify("Veuillez d'abord colorer un texte !");
+                return;
+            }
+
+            const btn = document.getElementById('downloadPdfBtn');
+            const label = document.getElementById('btnPdfLabel');
+            btn.disabled = true;
+            label.textContent = "Génération PDF...";
+
+            try {
+                // Récupération des styles calculés exacts
+                const rootStyle = getComputedStyle(document.documentElement);
+                const colorS1 = rootStyle.getPropertyValue('--color-s1').trim();
+                const colorS2 = rootStyle.getPropertyValue('--color-s2').trim();
+                const bgColor = rootStyle.getPropertyValue('--read-bg').trim() || '#FFFFFF';
+                const fontSize = rootStyle.getPropertyValue('--font-size').trim() || '1.6rem';
+                const wordSpacing = rootStyle.getPropertyValue('--word-spacing').trim() || '0.4em';
+                const letterSpacing = rootStyle.getPropertyValue('--letter-spacing').trim() || '0.06em';
+                const fontChosen = document.getElementById('fontFamilySelect').value;
+
+                // Préparation du conteneur temporaire
+                const staging = document.getElementById('pdfCaptureStaging');
+                staging.style.backgroundColor = bgColor;
+                staging.style.fontFamily = fontChosen;
+
+                // Construction d'un contenu entièrement stylé en inline (évite toute perte CSS lors du render)
+                staging.innerHTML = `
+                    <div style="background-color: ${bgColor}; padding: 30px; border-radius: 12px; border: 1px solid #E2E8F0;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #CBD5E1; padding-bottom: 12px; margin-bottom: 24px; font-size: 13px; color: #64748B;">
+                            <strong style="color: #1E293B;">Fiche de lecture adaptée (syllabes bicolores)</strong>
+                            <span>Date : ${new Date().toLocaleDateString('fr-FR')}</span>
+                        </div>
+                        <div id="stagingContent" style="
+                            font-size: ${fontSize};
+                            line-height: 2.3;
+                            word-spacing: ${wordSpacing};
+                            letter-spacing: ${letterSpacing};
+                            white-space: pre-wrap;
+                            word-break: break-word;
+                            color: #1E293B;
+                        ">${content}</div>
+                        <div style="margin-top: 35px; padding-top: 15px; border-top: 1px dashed #CBD5E1; font-size: 11px; color: #94A3B8; text-align: center;">
+                            Document adapté pour faciliter la lecture et le repérage syllabique
+                        </div>
+                    </div>
+                `;
+
+                // Forcer les couleurs des syllabes directement sur les spans enfants
+                staging.querySelectorAll('.syllable-0').forEach(el => {
+                    el.style.color = colorS1;
+                    el.style.fontWeight = '700';
+                });
+                staging.querySelectorAll('.syllable-1').forEach(el => {
+                    el.style.color = colorS2;
+                    el.style.fontWeight = '700';
+                });
+
+                // Laisser un court délai pour que le layout du navigateur calcule les polices
+                await new Promise(resolve => setTimeout(resolve, 150));
+
+                // Capture avec html2canvas
+                const canvas = await html2canvas(staging, {
+                    scale: 2, // Haute résolution
+                    useCORS: true,
+                    logging: false,
+                    backgroundColor: bgColor,
+                    width: staging.offsetWidth,
+                    windowWidth: staging.offsetWidth
+                });
+
+                // Vérification de sécurité du canvas
+                if (!canvas || canvas.width === 0 || canvas.height === 0) {
+                    throw new Error("Canvas de capture invalide");
+                }
+
+                const imgData = canvas.toDataURL('image/jpeg', 0.98);
+
+                // Initialisation jsPDF (format A4 portrait)
+                const { jsPDF } = window.jspdf;
+                const pdf = new jsPDF({
+                    orientation: 'portrait',
+                    unit: 'mm',
+                    format: 'a4'
+                });
+
+                const pageWidth = pdf.internal.pageSize.getWidth();
+                const pageHeight = pdf.internal.pageSize.getHeight();
+
+                // Calcul du ratio pour ajuster l'image à la largeur de la page avec marges
+                const margin = 10;
+                const renderWidth = pageWidth - (margin * 2);
+                const renderHeight = (canvas.height * renderWidth) / canvas.width;
+
+                if (renderHeight <= (pageHeight - (margin * 2))) {
+                    // Contenu tient sur une page
+                    pdf.addImage(imgData, 'JPEG', margin, margin, renderWidth, renderHeight);
+                } else {
+                    // Gestion multi-pages automatique si le texte est long
+                    let heightLeft = renderHeight;
+                    let position = margin;
+
+                    pdf.addImage(imgData, 'JPEG', margin, position, renderWidth, renderHeight);
+                    heightLeft -= (pageHeight - margin);
+
+                    while (heightLeft > 0) {
+                        position = heightLeft - renderHeight + margin;
+                        pdf.addPage();
+                        pdf.addImage(imgData, 'JPEG', margin, position, renderWidth, renderHeight);
+                        heightLeft -= pageHeight;
+                    }
+                }
+
+                // Téléchargement du fichier
+                pdf.save("fiche-lecture-syllabes.pdf");
+                notify("Fichier PDF téléchargé avec succès !");
+
+            } catch (err) {
+                console.error("Erreur lors de la création du PDF :", err);
+                notify("Erreur lors du téléchargement. Ouverture de la vue plein écran...");
+                openPrintableSheet();
+            } finally {
+                // Nettoyage
+                document.getElementById('pdfCaptureStaging').innerHTML = '';
+                btn.disabled = false;
+                label.textContent = "Télécharger le PDF";
+            }
+        }
+
+        /**
+         * Solution de secours garantie à 100% :
+         * Ouvre une page indépendante prête à être enregistrée en PDF (Ctrl+P -> Enregistrer en PDF)
+         */
+        function openPrintableSheet() {
+            const content = document.getElementById('outputText').innerHTML;
+            if (!content || content.includes('Veuillez saisir') || content.includes('Le texte dé·cou·pé')) {
+                notify("Veuillez d'abord colorer un texte !");
+                return;
+            }
+
+            const rootStyle = getComputedStyle(document.documentElement);
+            const c1 = rootStyle.getPropertyValue('--color-s1').trim();
+            const c2 = rootStyle.getPropertyValue('--color-s2').trim();
+            const bg = rootStyle.getPropertyValue('--read-bg').trim() || '#FFFFFF';
+            const fontSize = rootStyle.getPropertyValue('--font-size').trim();
+            const wordSpacing = rootStyle.getPropertyValue('--word-spacing').trim();
+            const letterSpacing = rootStyle.getPropertyValue('--letter-spacing').trim();
+            const font = document.getElementById('fontFamilySelect').value;
+
+            const printWin = window.open('', '_blank');
+            if (!printWin) {
+                notify("Veuillez autoriser les fenêtres pop-up.");
+                return;
+            }
+
+            printWin.document.write(`
+                <!DOCTYPE html>
+                <html lang="fr">
+                <head>
+                    <meta charset="UTF-8">
+                    <title>Fiche de Lecture - Dyslexie</title>
+                    <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;600;700&display=swap" rel="stylesheet">
+                    <style>
+                        @page { margin: 1.5cm; }
+                        * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+                        body {
+                            font-family: ${font};
+                            background-color: ${bg} !important;
+                            color: #1E293B;
+                            padding: 25px;
+                            margin: 0;
+                        }
+                        .header {
+                            display: flex;
+                            justify-content: space-between;
+                            font-size: 13px;
+                            color: #64748B;
+                            border-bottom: 2px solid #CBD5E1;
+                            padding-bottom: 10px;
+                            margin-bottom: 25px;
+                        }
+                        .reading-area {
+                            font-size: ${fontSize};
+                            line-height: 2.3;
+                            word-spacing: ${wordSpacing};
+                            letter-spacing: ${letterSpacing};
+                            white-space: pre-wrap;
+                            word-break: break-word;
+                        }
+                        .syllable-0 { color: ${c1} !important; font-weight: 700; }
+                        .syllable-1 { color: ${c2} !important; font-weight: 700; }
+                        .inline-block { display: inline-block; }
+                        .footer {
+                            margin-top: 40px;
+                            padding-top: 12px;
+                            border-top: 1px dashed #CBD5E1;
+                            font-size: 11px;
+                            color: #94A3B8;
+                            display: flex;
+                            justify-content: space-between;
+                        }
+                        .actions {
+                            margin-bottom: 20px;
+                            padding: 10px;
+                            background: #F1F5F9;
+                            border-radius: 8px;
+                            display: flex;
+                            gap: 10px;
+                        }
+                        @media print { .actions { display: none; } }
+                    </style>
+                </head>
+                <body>
+                    <div class="actions">
+                        <button onclick="window.print()" style="padding: 8px 16px; background: #2563EB; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                            🖨️ Enregistrer en PDF / Imprimer
+                        </button>
+                    </div>
+                    <div class="header">
+                        <strong>Fiche de lecture adaptée (syllabes bicolores)</strong>
+                        <span>Date : ${new Date().toLocaleDateString('fr-FR')}</span>
+                    </div>
+                    <div class="reading-area">${content}</div>
+                    <div class="footer">
+                        <span>Fiche pour enfant dyslexique</span>
+                        <span>Espacement & couleurs adaptées</span>
+                    </div>
+                </body>
+                </html>
+            `);
+            printWin.document.close();
+        }
+
+        // Texte exemple au chargement
+        window.addEventListener('load', () => {
+            const sample = "Le pe·tit re·nard roux se pro·mè·ne joy·eu·se·ment dans la fo·rêt. Il o·bser·ve les pa·pil·lons et é·cou·te le chant des oi·seaux. La lec·tu·re de·vient plus fa·ci·le et a·gré·a·ble grâce aux cou·leurs !";
+            document.getElementById('inputText').value = sample;
+            processText();
+        });
+    </script>
+</body>
+</html>
