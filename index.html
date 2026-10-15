@@ -59,6 +59,24 @@
             color: var(--color-s2) !important;
             font-weight: 600;
         }
+        .syl-manual {
+            font-weight: 600;
+        }
+
+        /* Barre d'outils flottante contextuelle pour la sélection */
+        #selectionToolbar {
+            position: absolute;
+            display: none;
+            z-index: 50;
+            transform: translate(-50%, -100%);
+            margin-top: -10px;
+            animation: fadeInScale 0.15s ease-out;
+        }
+
+        @keyframes fadeInScale {
+            from { opacity: 0; transform: translate(-50%, -90%) scale(0.95); }
+            to { opacity: 1; transform: translate(-50%, -100%) scale(1); }
+        }
 
         .palette-btn {
             transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
@@ -242,9 +260,20 @@
             <!-- Colonne Zone de Lecture & Téléchargement -->
             <section class="lg:col-span-7 flex flex-col space-y-3">
                 <div class="flex flex-wrap justify-between items-center gap-2">
-                    <h2 class="text-base font-semibold text-slate-800 flex items-center gap-2">
-                        <span>📄</span> Zone de lecture adaptée
-                    </h2>
+                    <div class="flex items-center gap-2">
+                        <h2 class="text-base font-semibold text-slate-800 flex items-center gap-1.5">
+                            <span>📄</span> Zone de lecture adaptée
+                        </h2>
+                        <!-- Bouton d'annulation (Undo) pour les retouches manuelles -->
+                        <button id="undoBtn" onclick="undoLastChange()" disabled
+                            title="Annuler la dernière retouche manuelle (Ctrl+Z)"
+                            class="text-xs bg-slate-100 hover:bg-slate-200 disabled:opacity-40 disabled:hover:bg-slate-100 text-slate-700 px-2 py-1 rounded-lg border border-slate-200 flex items-center gap-1 transition">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a5 5 0 015 5v2m0 0l-3-3m3 3l3-3M3 10l3-3m-3 3l3 3"></path>
+                            </svg>
+                            <span>Annuler</span>
+                        </button>
+                    </div>
                     
                     <div class="flex items-center gap-2">
                         <!-- Bouton PDF Fiabilisé -->
@@ -268,9 +297,31 @@
                     </div>
                 </div>
 
+                <!-- Bandeau d'astuce pédagogique -->
+                <div class="bg-blue-50/80 border border-blue-200/60 rounded-xl px-3 py-2 flex items-center gap-2 text-xs text-blue-900">
+                    <span class="text-base">💡</span>
+                    <span><strong>Astuce :</strong> Surlignez n'importe quelle lettre ou syllabe à la souris pour corriger sa couleur instantanément !</span>
+                </div>
+
                 <!-- Zone d'affichage du texte coloré -->
-                <div id="readCard" class="read-container rounded-3xl p-6 sm:p-8 md:p-10 min-h-[500px] border-2 border-slate-200 shadow-sm relative overflow-hidden">
+                <div id="readCard" class="read-container rounded-3xl p-6 sm:p-8 md:p-10 min-h-[500px] border-2 border-slate-200 shadow-sm relative overflow-hidden select-text">
                     <div id="outputText">Le texte dé·cou·pé ap·pa·raî·tra i·ci...</div>
+
+                    <!-- Barre d'outils flottante contextuelle pour recolorier la sélection (uniquement les 2 pastilles actives) -->
+                    <div id="selectionToolbar" class="bg-white/95 backdrop-blur-sm border border-slate-300 shadow-xl rounded-2xl p-1.5 flex items-center gap-1.5 text-xs">
+                        <button onmousedown="applyColorToSelection('var(--color-s1)'); event.preventDefault();"
+                            title="Appliquer la couleur 1"
+                            class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 font-semibold transition active:scale-95 text-slate-700">
+                            <span id="quickDot1" class="w-4 h-4 rounded-full bg-red-600 inline-block shadow-sm"></span>
+                            <span>Couleur 1</span>
+                        </button>
+                        <button onmousedown="applyColorToSelection('var(--color-s2)'); event.preventDefault();"
+                            title="Appliquer la couleur 2"
+                            class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 font-semibold transition active:scale-95 text-slate-700">
+                            <span id="quickDot2" class="w-4 h-4 rounded-full bg-blue-600 inline-block shadow-sm"></span>
+                            <span>Couleur 2</span>
+                        </button>
+                    </div>
                 </div>
             </section>
 
@@ -286,6 +337,48 @@
     </div>
 
     <script>
+        // Historique pour l'annulation (Undo)
+        const historyStack = [];
+
+        function saveHistory() {
+            const currentHTML = document.getElementById('outputText').innerHTML;
+            if (historyStack.length === 0 || historyStack[historyStack.length - 1] !== currentHTML) {
+                historyStack.push(currentHTML);
+                if (historyStack.length > 25) historyStack.shift();
+                updateUndoButton();
+            }
+        }
+
+        function undoLastChange() {
+            if (historyStack.length > 1) {
+                historyStack.pop(); // Retire l'état courant
+                const previousState = historyStack[historyStack.length - 1];
+                document.getElementById('outputText').innerHTML = previousState;
+                hideSelectionToolbar();
+                updateUndoButton();
+                notify("Modification annulée");
+            } else if (historyStack.length === 1) {
+                document.getElementById('outputText').innerHTML = historyStack[0];
+                updateUndoButton();
+            }
+        }
+
+        function updateUndoButton() {
+            const btn = document.getElementById('undoBtn');
+            if (btn) btn.disabled = (historyStack.length <= 1);
+        }
+
+        // Raccourci clavier Ctrl+Z pour annuler
+        window.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+                const activeTag = document.activeElement ? document.activeElement.tagName.toLowerCase() : '';
+                if (activeTag !== 'textarea' && activeTag !== 'input') {
+                    e.preventDefault();
+                    undoLastChange();
+                }
+            }
+        });
+
         // Algorithme de découpage syllabique pour le français
         function splitIntoSyllables(word) {
             if (word.length <= 3) return [word];
@@ -340,6 +433,116 @@
             });
 
             outputDiv.innerHTML = finalHtml;
+            hideSelectionToolbar();
+            historyStack.length = 0; // Réinitialise l'historique
+            saveHistory();
+        }
+
+        /* --- GESTION DE LA RETOUCHE MANUELLE PAR SÉLECTION --- */
+        let currentRange = null;
+
+        function checkTextSelection() {
+            const selection = window.getSelection();
+            const outputDiv = document.getElementById('outputText');
+            const toolbar = document.getElementById('selectionToolbar');
+
+            if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
+                hideSelectionToolbar();
+                return;
+            }
+
+            const range = selection.getRangeAt(0);
+
+            // Vérifie que la sélection est bien dans la zone de lecture
+            if (!outputDiv.contains(range.commonAncestorContainer)) {
+                hideSelectionToolbar();
+                return;
+            }
+
+            const textSelected = selection.toString().trim();
+            if (textSelected.length === 0) {
+                hideSelectionToolbar();
+                return;
+            }
+
+            currentRange = range.cloneRange();
+            positionToolbarOverSelection(range);
+        }
+
+        function positionToolbarOverSelection(range) {
+            const toolbar = document.getElementById('selectionToolbar');
+            const readCard = document.getElementById('readCard');
+            const rect = range.getBoundingClientRect();
+            const cardRect = readCard.getBoundingClientRect();
+
+            // Calcul de position relative à la carte de lecture
+            const topPos = rect.top - cardRect.top + readCard.scrollTop;
+            const leftPos = rect.left - cardRect.left + (rect.width / 2) + readCard.scrollLeft;
+
+            toolbar.style.top = `${topPos}px`;
+            toolbar.style.left = `${Math.max(80, Math.min(cardRect.width - 80, leftPos))}px`;
+            toolbar.style.display = 'flex';
+        }
+
+        function hideSelectionToolbar() {
+            const toolbar = document.getElementById('selectionToolbar');
+            if (toolbar) toolbar.style.display = 'none';
+        }
+
+        // Écouteurs d'événements pour faire apparaître la barre flottante lors de la sélection
+        document.addEventListener('mouseup', () => {
+            setTimeout(checkTextSelection, 30);
+        });
+        document.addEventListener('keyup', (e) => {
+            if (e.key.startsWith('Arrow') || e.key === 'Shift') {
+                setTimeout(checkTextSelection, 30);
+            }
+        });
+        document.addEventListener('mousedown', (e) => {
+            const toolbar = document.getElementById('selectionToolbar');
+            if (toolbar && !toolbar.contains(e.target) && !document.getElementById('outputText').contains(e.target)) {
+                hideSelectionToolbar();
+            }
+        });
+
+        /**
+         * Applique la couleur souhaitée à la zone de texte sélectionnée
+         */
+        function applyColorToSelection(colorValue) {
+            const selection = window.getSelection();
+            let range = currentRange;
+
+            if (selection && selection.rangeCount > 0 && !selection.isCollapsed) {
+                range = selection.getRangeAt(0);
+            }
+
+            if (!range) return;
+
+            saveHistory();
+
+            // Création d'un élément span portant la couleur
+            const span = document.createElement('span');
+            span.className = 'syl-manual';
+
+            if (colorValue.startsWith('var(')) {
+                span.style.color = colorValue;
+            } else {
+                span.style.color = colorValue;
+            }
+
+            try {
+                // Enveloppe la sélection dans le span
+                span.appendChild(range.extractContents());
+                range.insertNode(span);
+            } catch (err) {
+                // Fallback si la sélection traverse plusieurs nœuds
+                document.execCommand('foreColor', false, colorValue);
+            }
+
+            selection.removeAllRanges();
+            hideSelectionToolbar();
+            saveHistory();
+            notify("Couleur de la sélection mise à jour !");
         }
 
         function setPalette(c1, c2, bg, btnElement) {
@@ -349,6 +552,12 @@
 
             document.getElementById('pickerColor1').value = c1;
             document.getElementById('pickerColor2').value = c2;
+
+            // Met à jour les pastilles d'aperçu de la barre flottante
+            const dot1 = document.getElementById('quickDot1');
+            const dot2 = document.getElementById('quickDot2');
+            if (dot1) dot1.style.backgroundColor = c1;
+            if (dot2) dot2.style.backgroundColor = c2;
 
             document.querySelectorAll('.palette-btn').forEach(btn => btn.classList.remove('active'));
             if (btnElement) btnElement.classList.add('active');
@@ -360,6 +569,11 @@
 
             document.documentElement.style.setProperty('--color-s1', c1);
             document.documentElement.style.setProperty('--color-s2', c2);
+
+            const dot1 = document.getElementById('quickDot1');
+            const dot2 = document.getElementById('quickDot2');
+            if (dot1) dot1.style.backgroundColor = c1;
+            if (dot2) dot2.style.backgroundColor = c2;
 
             document.querySelectorAll('.palette-btn').forEach(btn => btn.classList.remove('active'));
         }
@@ -477,6 +691,15 @@
                 });
                 staging.querySelectorAll('.syllable-1').forEach(el => {
                     el.style.color = colorS2;
+                    el.style.fontWeight = '700';
+                });
+                // Prendre en compte les retouches manuelles
+                staging.querySelectorAll('.syl-manual').forEach(el => {
+                    if (el.style.color.includes('var(--color-s1)')) {
+                        el.style.color = colorS1;
+                    } else if (el.style.color.includes('var(--color-s2)')) {
+                        el.style.color = colorS2;
+                    }
                     el.style.fontWeight = '700';
                 });
 
@@ -613,6 +836,7 @@
                         }
                         .syllable-0 { color: ${c1} !important; font-weight: 700; }
                         .syllable-1 { color: ${c2} !important; font-weight: 700; }
+                        .syl-manual { font-weight: 700; }
                         .inline-block { display: inline-block; }
                         .footer {
                             margin-top: 40px;
